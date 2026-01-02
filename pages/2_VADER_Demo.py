@@ -1,22 +1,44 @@
 import streamlit as st
 import langid
 import pandas as pd
+import io
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from deep_translator import GoogleTranslator
 
+# --- CONFIGURATION ---
 st.set_page_config(
-    page_title="Demo",
-    page_icon="📝"
+    page_title="Live Demo",
+    page_icon="🎮",
+    layout="wide"
 )
 
-# Caching Analyzer
+# --- CSS STYLING ---
+st.markdown("""
+<style>
+    .stTextArea textarea {
+        font-size: 16px;
+    }
+    .result-card {
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 20px;
+        border: 1px solid #e6e6e6;
+    }
+    .big-font {
+        font-size: 18px !important;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- INITIALIZATION ---
 @st.cache_resource
 def get_analyzer():
     return SentimentIntensityAnalyzer()
 
 sid = get_analyzer()
 
-# Fungsi Helper untuk Translasi
+# --- HELPER FUNCTIONS ---
 def translate_text(text, target='en'):
     try:
         return GoogleTranslator(source='auto', target=target).translate(text)
@@ -24,110 +46,189 @@ def translate_text(text, target='en'):
         st.error(f"Translation failed: {e}")
         return text
 
-# Fungsi Helper untuk Download
-def convert_df(data_files):
-    # Menggunakan index=False agar file output lebih bersih
-    return data_files.to_csv(index=False).encode('utf-8')
+def convert_to_excel(df):
+    """Konversi DataFrame ke Bytes Excel"""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Sentiment Results')
+    return output.getvalue()
 
-# --- KONTEN HALAMAN ---
-st.write("""
-# VADER Sentiment Analysis
-""")
+def get_sentiment_color(compound):
+    if compound >= 0.05: return "#28a745" # Green
+    elif compound <= -0.05: return "#dc3545" # Red
+    return "#ffc107" # Yellow/Orange
 
-tab1, tab2 = st.tabs(['Sentence', 'Files'])
+# --- MAIN CONTENT ---
+st.title("🎮 VADER Live Demo")
+st.markdown("Uji kemampuan analisis sentimen VADER secara *real-time* atau menggunakan file dataset.")
 
-# --- TAB 1: KALIMAT ---
+tab1, tab2 = st.tabs(['💬 Single Sentence', '📂 Bulk File Upload'])
+
+# ==========================================
+# TAB 1: KALIMAT (SENTENCE ANALYSIS)
+# ==========================================
 with tab1:
-    vas = st.text_input("Enter the word or sentence you want to do sentiment analysis.", value='')
-    st.caption("This version supports auto-translation to English for analysis.")
+    st.markdown("#### Input Text Analysis")
     
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        pro = st.button("Process")
-    with col2:
-        rr = st.button("Reset / Clear")
-
-    if pro and vas:
-        # Deteksi Bahasa
-        lang_detected, confidence = langid.classify(vas)
-        st.write(f'Detected Language: **{lang_detected}**')
+    col_input, col_result = st.columns([1.5, 1], gap="large")
+    
+    with col_input:
+        vas = st.text_area(
+            "Masukkan kalimat atau paragraf:", 
+            height=150,
+            placeholder="Contoh: I really love this new feature! It makes my life so much easier."
+        )
+        st.caption("ℹ️ Mendukung deteksi bahasa otomatis & terjemahan ke Inggris.")
         
-        with st.spinner('Performing Analytical Calculations...'):
-            text_to_analyze = vas
-            
-            # Jika bukan bahasa Inggris, translate dulu
-            if lang_detected != 'en':
-                translated_text = translate_text(vas)
-                st.info(f"Translated to English: *{translated_text}*")
-                text_to_analyze = translated_text
-            
-            scr = sid.polarity_scores(text_to_analyze)
-            
-            # Tampilkan Hasil Skor
-            st.json(scr)
-            
-            cmp = scr["compound"]
-            if cmp >= 0.05:
-                st.success(f"Positive (Compound: {cmp})")
-            elif cmp <= -0.05:
-                st.error(f"Negative (Compound: {cmp})")
-            else:
-                st.warning(f"Neutral (Compound: {cmp})")
-        
-    if rr:
-        st.rerun()  # Mengganti experimental_rerun
+        c_act1, c_act2 = st.columns([1, 4])
+        with c_act1:
+            pro = st.button("🚀 Analyze", type="primary", use_container_width=True)
+        with c_act2:
+            rr = st.button("🔄 Reset", use_container_width=False)
 
-# --- TAB 2: FILE UPLOAD ---
+    with col_result:
+        if pro and vas:
+            with st.spinner('🔍 Analyzing sentiment...'):
+                # 1. Deteksi Bahasa
+                lang_detected, confidence = langid.classify(vas)
+                
+                # 2. Translasi jika perlu
+                text_to_analyze = vas
+                is_translated = False
+                if lang_detected != 'en':
+                    text_to_analyze = translate_text(vas)
+                    is_translated = True
+                
+                # 3. Analisis VADER
+                scr = sid.polarity_scores(text_to_analyze)
+                cmp = scr["compound"]
+                
+                # --- TAMPILAN HASIL ---
+                st.markdown("### Result")
+                
+                # Badge Bahasa
+                if is_translated:
+                    st.info(f"🌐 Translated from **{lang_detected}**: \n\n_{text_to_analyze}_")
+                else:
+                    st.success(f"🌐 Language Detected: **{lang_detected}**")
+
+                # Kartu Skor
+                sentiment_color = get_sentiment_color(cmp)
+                sentiment_label = "Positive" if cmp >= 0.05 else "Negative" if cmp <= -0.05 else "Neutral"
+                
+                with st.container(border=True):
+                    col_metric1, col_metric2 = st.columns(2)
+                    col_metric1.metric("Sentiment Label", sentiment_label)
+                    col_metric2.metric("Compound Score", f"{cmp:.4f}")
+                    
+                    # Custom Progress Bar
+                    progress_val = (cmp + 1) / 2
+                    st.progress(progress_val)
+                    st.caption(f"Polarity Scale: {cmp} (Red: Neg, Yellow: Neu, Green: Pos)")
+
+                # Detail JSON
+                with st.expander("View Detailed Scores (JSON)"):
+                    st.json(scr)
+
+        if rr:
+            st.rerun()
+
+# ==========================================
+# TAB 2: FILE UPLOAD (EXCEL SUPPORT)
+# ==========================================
 with tab2:
-    file = st.file_uploader("Upload File (TSV/CSV)", type=['tsv', 'csv'])
+    st.markdown("#### 📂 Batch Analysis from Excel")
+    st.info("Upload file Excel (`.xlsx`) yang berisi data teks. Sistem akan memproses seluruh baris sekaligus.")
+    
+    # 1. File Uploader khusus XLSX
+    file = st.file_uploader("Upload Excel File", type=['xlsx'])
     
     if file is not None:
         try:
-            # Otomatis deteksi separator (tab atau koma)
-            if file.name.endswith('.tsv'):
-                data_files = pd.read_csv(file, sep='\t')
-            else:
-                data_files = pd.read_csv(file)
-                
-            st.dataframe(data_files.head())
+            # Baca Excel dengan engine openpyxl
+            data_files = pd.read_excel(file, engine='openpyxl')
             
+            st.write("### Preview Data")
+            st.dataframe(data_files.head(), use_container_width=True)
+            
+            # Pilihan Kolom
             columns = data_files.columns.tolist()
-            option = st.selectbox(
-                'Select the column containing text to analyze',
-                columns
-            )
+            col_sel1, col_sel2 = st.columns([1, 2])
             
-            prf = st.button('Process File')
+            with col_sel1:
+                option = st.selectbox('Pilih Kolom Teks untuk Dianalisis:', columns)
             
+            with col_sel2:
+                st.write("") # Spacer
+                st.write("") 
+                prf = st.button('⚡ Process Entire File', type="primary")
+            
+            # Proses Data
             if prf:
-                with st.spinner('Calculating Sentiment Scores...'):
-                    # Pastikan data dikonversi ke string
-                    data_files['scores'] = data_files[option].astype(str).apply(
-                        lambda content: sid.polarity_scores(content)
-                    )
+                progress_bar = st.progress(0)
+                status_text = st.empty()
                 
-                with st.spinner('Assigning Labels...'):
-                    data_files['compound'] = data_files["scores"].apply(
-                        lambda score_dict: score_dict['compound']
-                    )
-                    data_files['label'] = data_files['compound'].apply(
-                        lambda c: 'Positive' if c >= 0.05 else 'Negative' if c <= -0.05 else 'Neutral'
-                    )
+                # Simulasi progress
+                status_text.text('⏳ Calculating Sentiment Scores...')
+                progress_bar.progress(30)
                 
-                st.write("Analysis Result:")
-                st.dataframe(data_files)
-                
-                # Download Button
-                file_csv = convert_df(data_files)
-                st.download_button(
-                    label="Download Result as CSV",
-                    data=file_csv,
-                    file_name="vader_result.csv",
-                    mime='text/csv',
+                # Pastikan kolom string
+                data_files['scores'] = data_files[option].astype(str).apply(
+                    lambda content: sid.polarity_scores(content)
                 )
+                
+                progress_bar.progress(60)
+                status_text.text('🏷️ Assigning Labels...')
+                
+                # Ekstrak compound & label
+                data_files['compound'] = data_files["scores"].apply(lambda d: d['compound'])
+                data_files['label'] = data_files['compound'].apply(
+                    lambda c: 'Positive' if c >= 0.05 else 'Negative' if c <= -0.05 else 'Neutral'
+                )
+                
+                progress_bar.progress(100)
+                status_text.text('✅ Done!')
+                
+                # Tampilkan Hasil dengan Visualisasi Kolom
+                st.write("### Analysis Result")
+                st.dataframe(
+                    data_files,
+                    column_config={
+                        "compound": st.column_config.ProgressColumn(
+                            "Score",
+                            format="%.4f",
+                            min_value=-1,
+                            max_value=1,
+                            help="VADER Compound Score"
+                        )
+                    },
+                    use_container_width=True
+                )
+                
+                # Download Section (EXCEL FORMAT)
+                st.success("Analisis Selesai! Silakan unduh hasilnya.")
+                
+                excel_data = convert_to_excel(data_files)
+                
+                st.download_button(
+                    label="📥 Download Result as Excel (.xlsx)",
+                    data=excel_data,
+                    file_name="vader_analysis_result.xlsx",
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                )
+
+        except ImportError:
+            st.error("❌ Library `openpyxl` belum terinstall. Mohon tambahkan ke requirements.txt.")
         except Exception as e:
-            st.error(f"Error processing file: {e}")
+            st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
             
     else:
-        st.info('Upload a TSV or CSV file to start batch analysis.')
-        st.write('You can convert your file into tsv/csv online if needed.')
+        # Tampilan kosong yang rapi
+        st.markdown(
+            """
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px dashed #ccc; text-align: center;">
+                <p style="margin: 0; color: #666;">Drag and drop file Excel (.xlsx) di sini</p>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
