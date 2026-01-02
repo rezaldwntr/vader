@@ -1,2 +1,7 @@
-translators
-langid
+streamlit>=1.30.0
+pandas>=2.0.0
+numpy>=1.24.0
+vaderSentiment>=3.3.2
+Pillow>=10.0.0
+translators>=5.8.0
+langid>=1.1.6
