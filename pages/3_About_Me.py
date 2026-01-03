@@ -123,7 +123,7 @@ with tab_about:
     penerapan **VADER (Valence Aware Dictionary and sEntiment Reasoner)** dalam menganalisis sentimen 
     ulasan aplikasi Zoom di Google Play Store.
     """)
-    st.markdown("Fitur utama meliputi: Analisis Teks Real-time, Dukungan Multi-bahasa, dan Pemrosesan File Batch (TSV/CSV).")
+    st.markdown("Fitur utama meliputi: Analisis Teks Real-time, Dukungan Multi-bahasa, dan Pemrosesan File Batch (EXCEL).")
 
 # --- FOOTER ---
 st.markdown("---")
@@ -135,3 +135,4 @@ st.markdown(
     """, 
     unsafe_allow_html=True
 )
+
