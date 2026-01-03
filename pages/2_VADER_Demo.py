@@ -2,6 +2,7 @@ import streamlit as st
 import langid
 import pandas as pd
 import io
+import altair as alt
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from deep_translator import GoogleTranslator
 
@@ -189,8 +190,51 @@ with tab2:
                 progress_bar.progress(100)
                 status_text.text('✅ Done!')
                 
-                # Tampilkan Hasil dengan Visualisasi Kolom
-                st.write("### Analysis Result")
+                # --- VISUALISASI HASIL (CHART) ---
+                st.markdown("---")
+                st.markdown("### 📊 Visualisasi Hasil")
+                
+                # 1. Hitung Jumlah Label
+                label_counts = data_files['label'].value_counts().reset_index()
+                label_counts.columns = ['Sentiment', 'Count']
+                
+                # 2. Tampilkan Metrik
+                col_m1, col_m2, col_m3 = st.columns(3)
+                
+                # Helper untuk ambil nilai aman
+                def get_count(label):
+                    val = label_counts[label_counts['Sentiment'] == label]['Count'].values
+                    return val[0] if len(val) > 0 else 0
+                
+                with col_m1:
+                    st.metric("Positive Reviews", int(get_count('Positive')), border=True)
+                with col_m2:
+                    st.metric("Neutral Reviews", int(get_count('Neutral')), border=True)
+                with col_m3:
+                    st.metric("Negative Reviews", int(get_count('Negative')), border=True)
+                
+                # 3. Buat Chart dengan Altair (Warna Kustom)
+                # Skala Warna: Positive=Hijau, Neutral=Kuning, Negative=Merah
+                chart = alt.Chart(label_counts).mark_bar().encode(
+                    x=alt.X('Sentiment', sort=['Positive', 'Neutral', 'Negative']),
+                    y='Count',
+                    color=alt.Color(
+                        'Sentiment', 
+                        scale=alt.Scale(
+                            domain=['Positive', 'Neutral', 'Negative'],
+                            range=['#28a745', '#ffc107', '#dc3545']
+                        ),
+                        legend=None
+                    ),
+                    tooltip=['Sentiment', 'Count']
+                ).properties(
+                    height=350
+                ).interactive()
+                
+                st.altair_chart(chart, use_container_width=True)
+                
+                # --- TABEL DATA ---
+                st.markdown("### 📋 Tabel Data Lengkap")
                 st.dataframe(
                     data_files,
                     column_config={
